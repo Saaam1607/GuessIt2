@@ -56,6 +56,9 @@ export default function App() {
   const [isHost, setIsHost] = useState(false);
   const [players, setPlayers] = useState<LobbyPlayer[]>([]);
   const [showJoinInput, setShowJoinInput] = useState(false);
+  const [profileImage, setProfileImage] = useState<string>('panda.png');
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const PROFILE_IMAGES = ['chameleon.png', 'eagle.png', 'ferret.png', 'monkey.png', 'panda.png'];
 
   // ── Connection ───────────────────────────────────────────────────────────────
   const [connected, setConnected] = useState(false);
@@ -76,11 +79,19 @@ export default function App() {
   const [hasPressedReady, setHasPressedReady] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
 
+  // ── Bonuses state ────────────────────────────────────────────────────────────
+  const [myBonuses, setMyBonuses] = useState({ fiftyFifty: 3, doublePoints: 3 });
+  const [doublePointsActive, setDoublePointsActive] = useState(false);
+  const [disabledIndices, setDisabledIndices] = useState<number[]>([]);
+
   // ── Socket ───────────────────────────────────────────────────────────────────
   const socketRef = useRef<any>(null);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const getSocketUrl = (): string => {
+    const envUrl = process.env.EXPO_PUBLIC_API_URL;
+    if (envUrl) return envUrl;
+
     let ip = 'localhost';
     if (Platform.OS === 'web') {
       if (typeof window !== 'undefined') ip = window.location.hostname;
@@ -102,10 +113,11 @@ export default function App() {
     console.log('[Socket] Connecting to server at:', url);
 
     const socket = io(url, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
       reconnectionAttempts: 10,
       reconnectionDelay: 2000,
+      timeout: 30000,
     });
 
     socketRef.current = socket;
@@ -153,6 +165,9 @@ export default function App() {
       setReadyCount(null);
       setCountdown(null);
       setHasPressedReady(false);
+      setMyBonuses({ fiftyFifty: 3, doublePoints: 3 });
+      setDoublePointsActive(false);
+      setDisabledIndices([]);
     });
 
     socket.on('newQuestion', (payload: QuestionPayload) => {
@@ -165,6 +180,8 @@ export default function App() {
       setReadyCount(null);
       setCountdown(null);
       setHasPressedReady(false);
+      setDoublePointsActive(false);
+      setDisabledIndices([]);
       setScreen('GAME_CATEGORY_REVEAL');
       revealTimerRef.current = setTimeout(() => {
         revealTimerRef.current = null;
@@ -179,6 +196,10 @@ export default function App() {
       setCountdown(null);
       setHasPressedReady(false);
       setScreen('GAME_ROUND_RESULT');
+      const me = result.players.find(p => p.id === socket.id);
+      if (me && me.bonuses) {
+        setMyBonuses(me.bonuses);
+      }
     });
 
     socket.on('readyCount', (data: { ready: number; total: number }) => {
@@ -189,6 +210,18 @@ export default function App() {
       console.log('[Socket] gameEnd received');
       setGameEnd(payload);
       setScreen('GAME_END');
+    });
+
+    socket.on('fiftyFiftyResult', (data: { disabledIndices: number[] }) => {
+      setDisabledIndices(data.disabledIndices);
+      setMyBonuses(prev => ({ ...prev, fiftyFifty: Math.max(0, prev.fiftyFifty - 1) }));
+    });
+
+    socket.on('doublePointsResult', (data: { active: boolean }) => {
+      if (data.active) {
+        setDoublePointsActive(true);
+        setMyBonuses(prev => ({ ...prev, doublePoints: Math.max(0, prev.doublePoints - 1) }));
+      }
     });
 
     return () => {
@@ -209,7 +242,7 @@ export default function App() {
       return;
     }
     console.log('[Socket] Emitting createLobby:', username.trim());
-    socketRef.current?.emit('createLobby', { username: username.trim() });
+    socketRef.current?.emit('createLobby', { username: username.trim(), profileImage });
   };
 
   const handleJoinLobbyClick = () => {
@@ -233,7 +266,7 @@ export default function App() {
     }
     const code = lobbyCodeInput.trim().toUpperCase();
     console.log(`[Socket] Emitting joinLobby for code ${code}:`, username.trim());
-    socketRef.current?.emit('joinLobby', { username: username.trim(), code });
+    socketRef.current?.emit('joinLobby', { username: username.trim(), code, profileImage });
   };
 
   const handleLeaveLobby = () => {
@@ -369,6 +402,41 @@ export default function App() {
                 <LobbyCard>
                   <ThemedText type="subtitle" style={styles.cardTitle}>Benvenuto</ThemedText>
 
+                  {serverUrl ? (
+                    <View style={{ marginBottom: Spacing.four, alignItems: 'center' }}>
+                      <ThemedText type="smallBold" style={{ marginBottom: Spacing.two }}>Scegli il tuo Avatar</ThemedText>
+                      <Pressable 
+                        onPress={() => setShowAvatarModal(true)} 
+                        style={{
+                          borderWidth: 2,
+                          borderColor: '#4f46e5',
+                          borderRadius: 80,
+                          padding: 2
+                        }}
+                      >
+                        <Image 
+                          source={{ uri: `${serverUrl}/images/profiles/${profileImage}` }} 
+                          style={{ width: 144, height: 144, borderRadius: 72, backgroundColor: 'rgba(0,0,0,0.05)' }} 
+                        />
+                        <View style={{
+                          position: 'absolute',
+                          bottom: 0,
+                          right: 0,
+                          backgroundColor: '#4f46e5',
+                          borderRadius: 12,
+                          width: 24,
+                          height: 24,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderWidth: 2,
+                          borderColor: theme.background,
+                        }}>
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>✎</Text>
+                        </View>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
                   <StyledInput
                     label="Il tuo Nickname"
                     placeholder="Inserisci il tuo nome..."
@@ -456,6 +524,10 @@ export default function App() {
                         ]}
                       >
                         <View style={styles.playerInfo}>
+                          <Image 
+                            source={{ uri: `${serverUrl}/images/profiles/${player.profileImage || 'panda.png'}` }} 
+                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.1)' }} 
+                          />
                           <ThemedText type="default" style={styles.playerName}>{player.name}</ThemedText>
                           {player.isHost && (
                             <View style={styles.hostBadge}>
@@ -533,6 +605,39 @@ export default function App() {
 
                 <Text style={[gs.questionText, { color: theme.text }]}>{currentQuestion.question}</Text>
 
+                <View style={{ flexDirection: 'row', gap: Spacing.six, justifyContent: 'center', marginBottom: Spacing.four }}>
+                  {currentQuestion.type === 'multiple_choice' && (
+                    <Pressable 
+                      onPress={() => socketRef.current?.emit('useBonus', { type: 'fiftyFifty' })} 
+                      disabled={answerSubmitted || myBonuses.fiftyFifty <= 0 || disabledIndices.length > 0} 
+                      style={{ alignItems: 'center', opacity: (answerSubmitted || myBonuses.fiftyFifty <= 0 || disabledIndices.length > 0) ? 0.5 : 1 }}
+                    >
+                      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(99,102,241,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#6366f1' }}>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: '#6366f1' }}>½</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
+                        {[...Array(3)].map((_, i) => (
+                          <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i < myBonuses.fiftyFifty ? '#6366f1' : 'rgba(99,102,241,0.2)' }} />
+                        ))}
+                      </View>
+                    </Pressable>
+                  )}
+                  <Pressable 
+                    onPress={() => socketRef.current?.emit('useBonus', { type: 'doublePoints' })} 
+                    disabled={answerSubmitted || myBonuses.doublePoints <= 0 || doublePointsActive} 
+                    style={{ alignItems: 'center', opacity: (answerSubmitted || myBonuses.doublePoints <= 0 || doublePointsActive) ? 0.5 : 1 }}
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: doublePointsActive ? '#6366f1' : 'rgba(99,102,241,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#6366f1' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: doublePointsActive ? '#fff' : '#6366f1' }}>x2</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
+                      {[...Array(3)].map((_, i) => (
+                        <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i < myBonuses.doublePoints ? '#6366f1' : 'rgba(99,102,241,0.2)' }} />
+                      ))}
+                    </View>
+                  </Pressable>
+                </View>
+
                 <View style={gs.optionsContainer}>
                   {currentQuestion.options.map((opt, idx) => {
                     const labels = getOptionLabels(currentQuestion.type);
@@ -546,6 +651,7 @@ export default function App() {
                         onPress={handleSelectOption}
                         disabled={answerSubmitted}
                         questionType={currentQuestion.type}
+                        isEliminated={disabledIndices.includes(idx)}
                       />;
                   })}
                 </View>
@@ -606,6 +712,8 @@ export default function App() {
                   answers={roundResult.answers}
                   correctIndex={roundResult.correctIndex}
                   questionType={currentQuestion.type}
+                  serverUrl={serverUrl}
+                  usedBonuses={roundResult.usedBonuses}
                 />
 
                 {hasPressedReady ? (
@@ -664,6 +772,39 @@ export default function App() {
           </Pressable>
         </Pressable>
       </Modal>
+      <Modal visible={showAvatarModal} transparent animationType="fade" onRequestClose={() => setShowAvatarModal(false)}>
+        <Pressable style={gs.modalOverlay} onPress={() => setShowAvatarModal(false)}>
+          <Pressable style={[gs.modalContent, { backgroundColor: theme.background, alignItems: 'center' }]} onPress={() => {}}>
+            <Text style={[gs.modalTitle, { color: theme.text }]}>Seleziona Avatar</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.three, marginVertical: Spacing.four }}>
+              {PROFILE_IMAGES.map((img) => (
+                <Pressable 
+                  key={img} 
+                  onPress={() => {
+                    setProfileImage(img);
+                    setShowAvatarModal(false);
+                  }} 
+                  style={{
+                    borderWidth: 3,
+                    borderColor: profileImage === img ? '#4f46e5' : 'transparent',
+                    borderRadius: 80,
+                    padding: 2
+                  }}
+                >
+                  <Image 
+                    source={{ uri: `${serverUrl}/images/profiles/${img}` }} 
+                    style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: 'rgba(0,0,0,0.05)' }} 
+                  />
+                </Pressable>
+              ))}
+            </View>
+            <Pressable style={gs.modalCloseButton} onPress={() => setShowAvatarModal(false)}>
+              <Text style={gs.modalCloseText}>Chiudi</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
     </ThemedView>
   );
 }
@@ -718,7 +859,7 @@ const styles = StyleSheet.create({
   shareButton: { height: 40, width: 120, marginVertical: 0 },
   separator: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.08)',
     marginVertical: Spacing.three,
   },
   sectionTitle: {
@@ -734,9 +875,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing.three,
     borderRadius: Spacing.two,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: 'rgba(0,0,0,0.02)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.03)',
+    borderColor: 'rgba(0,0,0,0.03)',
   },
   myPlayerRow: {
     borderColor: 'rgba(79, 70, 229, 0.3)',

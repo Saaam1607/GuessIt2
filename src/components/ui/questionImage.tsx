@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { StyleSheet, View, ViewStyle, Image, type ViewProps } from 'react-native';
 
+import { API_URL } from '@/constants/api';
 import { Spacing } from '@/constants/theme';
-
-const API_URL = 'http://localhost:3000';
 
 type QuestionImageProps = ViewProps & {
   imageName?: string;

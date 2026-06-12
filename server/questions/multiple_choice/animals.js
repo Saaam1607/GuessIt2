@@ -4,7 +4,7 @@ export const QUESTIONS = [
     type: 'multiple_choice',
     question: "Qual'è il ragno più velenoso al mondo?",
     options: ['Ragno delle Banane', 'Vedova Nera', 'Ragno dei Cunicoli', 'Ragno Eremita Marrone'],
-    correctIndex: 3,
+    correctIndex: 2,
     explaination: [
       "Il ragno dei Cunicoli, o ragno di Sidney, si trova in Australia ed è considerato uno dei più pericolosi al mondo e il più letale per gli esseri umani. Il suo livello di tossicità è letale anche per le persone adulte in buona salute.",
       "Il morso del ragno dei Cunicoli può portare al disorientamento, spasmi muscolari e all’edema cerebrale. Potrebbe causare la morte in un tempo compreso tra i 15 minuti ed i 3 giorni, a seconda dell’età e dallo stato fisico della vittima.",

@@ -19,9 +19,10 @@ interface OptionButtonProps {
   onPress: (index: number) => void;
   disabled: boolean;
   questionType?: 'multiple_choice' | 'true_false';
+  isEliminated?: boolean;
 }
 
-export function OptionButton({ label, text, index, selectedIndex, correctIndex, onPress, disabled, questionType }: OptionButtonProps) {
+export function OptionButton({ label, text, index, selectedIndex, correctIndex, onPress, disabled, questionType, isEliminated }: OptionButtonProps) {
   const theme = useTheme();
   const scale = useSharedValue(1);
 
@@ -78,11 +79,11 @@ export function OptionButton({ label, text, index, selectedIndex, correctIndex, 
       <Pressable
         onPressIn={() => { scale.value = withSpring(0.97); }}
         onPressOut={() => { scale.value = withSpring(1); }}
-        onPress={() => !disabled && onPress(index)}
-        disabled={disabled}
-        style={[styles.option, { backgroundColor: bgColor, borderColor }]}
+        onPress={() => !disabled && !isEliminated && onPress(index)}
+        disabled={disabled || isEliminated} 
+        style={[styles.option, { backgroundColor: bgColor, borderColor, opacity: isEliminated ? 0.3 : 1 }]}
       >
-        <View style={[styles.badge, { borderColor }]}>
+        <View style={[styles.badge, { borderColor: isEliminated ? 'rgba(0,0,0,0.1)' : borderColor }]}>
           <Text style={[styles.badgeText, { color: borderColor }]}>{label}</Text>
         </View>
         <Text style={[styles.optText, { color: textColor }]}>{text}</Text>

@@ -15,6 +15,8 @@ interface RankingProps {
   answers?: Record<string, number | null>;
   correctIndex?: number;
   questionType?: 'multiple_choice' | 'true_false';
+  serverUrl?: string;
+  usedBonuses?: Record<string, { fiftyFifty?: boolean; doublePoints?: boolean }>;
 }
 
 export default function Ranking({
@@ -25,6 +27,8 @@ export default function Ranking({
   answers,
   correctIndex,
   questionType,
+  serverUrl,
+  usedBonuses,
 }: RankingProps) {
   const labels = questionType === 'true_false' ? TRUE_FALSE_LABELS : OPTION_LABELS;
 
@@ -57,6 +61,8 @@ export default function Ranking({
               answerLabel={answerLabel}
               isCorrect={isCorrect}
               noAnswer={noAnswer}
+              serverUrl={serverUrl}
+              usedBonuses={usedBonuses?.[player.id]}
             />
           );
         })}

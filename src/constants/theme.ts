@@ -9,11 +9,11 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#2a3439',         // Dark slate charcoal instead of pure black
-    background: '#fcfcf9',   // Warm bone off-white
-    backgroundElement: '#f2f4f1', // Soft sage-tinted light gray
-    backgroundSelected: '#e5e9e3',
-    textSecondary: '#64748b', // Cool gray/slate
+    text: '#1e293b',
+    background: '#ffffff',
+    backgroundElement: '#f8fafc',
+    backgroundSelected: '#e2e8f0',
+    textSecondary: '#64748b',
   },
   dark: {
     text: '#f1f5f9',         // Off-white instead of stark pure white

@@ -1,8 +1,14 @@
+export interface Bonuses {
+  fiftyFifty: number;
+  doublePoints: number;
+}
+
 export interface LobbyPlayer {
   id: string;
   name: string;
   isHost: boolean;
   isReady: boolean;
+  profileImage?: string;
 }
 
 export interface GamePlayer {
@@ -10,6 +16,8 @@ export interface GamePlayer {
   name: string;
   score: number;
   isHost: boolean;
+  profileImage?: string;
+  bonuses: Bonuses;
 }
 
 export interface Player {
@@ -34,6 +42,7 @@ export interface RoundResult {
   answers: Record<string, number | null>;
   scores: Record<string, number>;
   players: GamePlayer[];
+  usedBonuses?: Record<string, { fiftyFifty?: boolean; doublePoints?: boolean }>;
 }
 
 export interface GameEndPayload {

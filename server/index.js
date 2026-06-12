@@ -12,7 +12,12 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 app.use('/images', express.static(path.join(__dirname, 'images')));
+
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', name: 'GuessIt2 Server' });
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -69,6 +74,7 @@ function buildPlayerList(code) {
   return getLobbyPlayers(code).map((p) => ({
     ...p,
     score: gs?.scores[p.id] ?? 0,
+    bonuses: gs?.bonuses[p.id] ?? { fiftyFifty: 0, doublePoints: 0 },
   }));
 }
 
@@ -91,6 +97,8 @@ function sendQuestion(code) {
 
   gs.questionStartedAt = Date.now();
   gs.answers = {}; // reset answers for this round
+  gs.activeBonuses = {}; // reset active bonuses
+  gs.usedBonuses = {}; // reset used bonuses tracking for this round
 
   const payload = {
     index: gs.currentIndex,
@@ -124,7 +132,9 @@ function resolveRound(code) {
   for (const player of players) {
     const ans = gs.answers[player.id];
     if (ans && ans.answerIndex === q.correctIndex) {
-      gs.scores[player.id] = (gs.scores[player.id] ?? 0) + POINTS_CORRECT;
+      const activeBonuses = gs.activeBonuses[player.id] || {};
+      const pts = activeBonuses.doublePoints ? POINTS_CORRECT * 2 : POINTS_CORRECT;
+      gs.scores[player.id] = (gs.scores[player.id] ?? 0) + pts;
     }
   }
 
@@ -135,6 +145,7 @@ function resolveRound(code) {
     ),
     scores: { ...gs.scores },
     players: buildPlayerList(code),
+    usedBonuses: gs.usedBonuses || {},
   };
 
   console.log(`[Lobby ${code}] Round resolved. Scores:`, gs.scores);
@@ -172,7 +183,7 @@ io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
 
   // 1. Create Lobby
-  socket.on('createLobby', ({ username }) => {
+  socket.on('createLobby', ({ username, profileImage }) => {
     if (!username || username.trim().length < 3) {
       socket.emit('joinError', 'Il nome deve avere almeno 3 caratteri');
       return;
@@ -181,7 +192,7 @@ io.on('connection', (socket) => {
     const code = generateLobbyCode();
     lobbies[code] = {
       code,
-      players: [{ id: socket.id, name: username.trim(), isHost: true, isReady: true }],
+      players: [{ id: socket.id, name: username.trim(), isHost: true, isReady: true, profileImage }],
     };
     socketToLobby[socket.id] = code;
     socket.join(code);
@@ -191,7 +202,7 @@ io.on('connection', (socket) => {
   });
 
   // 2. Join Lobby
-  socket.on('joinLobby', ({ username, code }) => {
+  socket.on('joinLobby', ({ username, code, profileImage }) => {
     if (!username || username.trim().length < 3) {
       socket.emit('joinError', 'Il nome deve avere almeno 3 caratteri');
       return;
@@ -210,7 +221,7 @@ io.on('connection', (socket) => {
     const nameExists = lobby.players.some((p) => p.name.toLowerCase() === username.trim().toLowerCase());
     const finalUsername = nameExists ? `${username.trim()} (2)` : username.trim();
 
-    lobby.players.push({ id: socket.id, name: finalUsername, isHost: false, isReady: false });
+    lobby.players.push({ id: socket.id, name: finalUsername, isHost: false, isReady: false, profileImage });
     socketToLobby[socket.id] = lobbyCode;
     socket.join(lobbyCode);
 
@@ -250,6 +261,9 @@ io.on('connection', (socket) => {
         currentIndex: 0,
         answers: {},
         scores: Object.fromEntries(lobby.players.map((p) => [p.id, 0])),
+        bonuses: Object.fromEntries(lobby.players.map((p) => [p.id, { fiftyFifty: 3, doublePoints: 3 }])),
+        activeBonuses: {},
+        usedBonuses: {},
         questionStartedAt: 0,
         roundTimer: null,
         readyPlayers: new Set(),
@@ -336,6 +350,46 @@ io.on('connection', (socket) => {
     // If everyone has answered, resolve immediately
     if (answeredCount >= totalPlayers) {
       resolveRound(code);
+    }
+  });
+
+  // 6b. Use Bonus
+  socket.on('useBonus', ({ type }) => {
+    const code = socketToLobby[socket.id];
+    if (!code) return;
+    const gs = gameStates[code];
+    if (!gs || gs.phase !== 'playing') return;
+
+    const playerBonuses = gs.bonuses[socket.id];
+    if (!playerBonuses) return;
+
+    // Check if player has already submitted an answer
+    if (gs.answers[socket.id] !== undefined) return;
+
+    if (!gs.usedBonuses) gs.usedBonuses = {};
+    if (!gs.usedBonuses[socket.id]) gs.usedBonuses[socket.id] = {};
+
+    if (type === 'fiftyFifty') {
+      if (playerBonuses.fiftyFifty <= 0) return;
+      const q = gs.questions[gs.currentIndex];
+      if (q.type !== 'multiple_choice') return;
+      
+      const incorrectIndices = q.options.map((_, i) => i).filter(i => i !== q.correctIndex);
+      incorrectIndices.sort(() => Math.random() - 0.5);
+      const toDisable = incorrectIndices.slice(0, 2);
+
+      playerBonuses.fiftyFifty--;
+      gs.usedBonuses[socket.id].fiftyFifty = true;
+      socket.emit('fiftyFiftyResult', { disabledIndices: toDisable });
+    } else if (type === 'doublePoints') {
+      if (playerBonuses.doublePoints <= 0) return;
+      if (!gs.activeBonuses[socket.id]) gs.activeBonuses[socket.id] = {};
+      if (gs.activeBonuses[socket.id].doublePoints) return; // already active
+
+      playerBonuses.doublePoints--;
+      gs.activeBonuses[socket.id].doublePoints = true;
+      gs.usedBonuses[socket.id].doublePoints = true;
+      socket.emit('doublePointsResult', { active: true });
     }
   });
 

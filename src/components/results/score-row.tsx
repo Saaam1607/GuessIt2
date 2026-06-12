@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Spacing } from '@/constants/theme';
@@ -13,9 +13,11 @@ interface ScoreRowProps {
   answerLabel?: string;
   isCorrect?: boolean;
   noAnswer?: boolean;
+  serverUrl?: string;
+  usedBonuses?: { fiftyFifty?: boolean; doublePoints?: boolean };
 }
 
-export function ScoreRow({ player, rank, myId, answerLabel, isCorrect, noAnswer }: ScoreRowProps) {
+export function ScoreRow({ player, rank, myId, answerLabel, isCorrect, noAnswer, serverUrl, usedBonuses }: ScoreRowProps) {
   const theme = useTheme();
   const isMe = player.id === myId;
   const rankEmoji = ['🥇', '🥈', '🥉'][rank] ?? `${rank + 1}.`;
@@ -30,7 +32,27 @@ export function ScoreRow({ player, rank, myId, answerLabel, isCorrect, noAnswer 
       ]}
     >
       <Text style={styles.rank}>{rankEmoji}</Text>
-      <Text style={[styles.name, { color: theme.text }]}>{player.name}{isMe ? ' (Tu)' : ''}</Text>
+      {serverUrl && (
+        <Image 
+          source={{ uri: `${serverUrl}/images/profiles/${player.profileImage || 'panda.png'}` }} 
+          style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.05)' }} 
+        />
+      )}
+      <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+        {player.name}{isMe ? ' (Tu)' : ''}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: 4, marginRight: 8 }}>
+        {usedBonuses?.fiftyFifty && (
+          <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: '#6366f1', fontSize: 10, fontWeight: '900' }}>½</Text>
+          </View>
+        )}
+        {usedBonuses?.doublePoints && (
+          <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: '#6366f1', fontSize: 10, fontWeight: '900' }}>x2</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.answerBadge}>
         {noAnswer ? (
           <Text style={[styles.answerText, { color: theme.textSecondary }]}>—</Text>
@@ -43,6 +65,7 @@ export function ScoreRow({ player, rank, myId, answerLabel, isCorrect, noAnswer 
           </Text>
         )}
       </View>
+      
       <Text style={[styles.score, { color: theme.text }]}>{player.score} pt</Text>
     </Animated.View>
   );
@@ -74,6 +97,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: Spacing.two,
   },
-  answerText: { fontSize: 14, fontWeight: '800' },
+  answerText: { fontSize: 18, fontWeight: '800' },
   score: { fontSize: 15, fontWeight: '800' },
 });
