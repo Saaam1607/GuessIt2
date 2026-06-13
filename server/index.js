@@ -104,11 +104,15 @@ function sendQuestion(code) {
     index: gs.currentIndex,
     total: gs.questions.length,
     question: q.question,
-    options: q.options,
+    options: q.options || [],
     category: q.category,
     image: q.id,
     type: q.type || 'multiple_choice',
     explaination: q.explaination || [],
+    min: q.min,
+    max: q.max,
+    step: q.step,
+    unit: q.unit,
   };
 
   console.log(`[Lobby ${code}] Sending question ${gs.currentIndex + 1}/${gs.questions.length}: "${q.question}"`);
@@ -129,17 +133,43 @@ function resolveRound(code) {
   const players = getLobbyPlayers(code);
 
   // Tally scores
-  for (const player of players) {
-    const ans = gs.answers[player.id];
-    if (ans && ans.answerIndex === q.correctIndex) {
-      const activeBonuses = gs.activeBonuses[player.id] || {};
+  if (q.type === 'numeric') {
+    let closestDiff = Infinity;
+    let closestPlayers = [];
+
+    // Find closest diff
+    for (const player of players) {
+      const ans = gs.answers[player.id];
+      if (ans && ans.answerIndex !== null && ans.answerIndex !== undefined) {
+        const diff = Math.abs(ans.answerIndex - q.correctValue);
+        if (diff < closestDiff) {
+          closestDiff = diff;
+          closestPlayers = [player.id];
+        } else if (diff === closestDiff) {
+          closestPlayers.push(player.id);
+        }
+      }
+    }
+
+    // Award points
+    for (const playerId of closestPlayers) {
+      const activeBonuses = gs.activeBonuses[playerId] || {};
       const pts = activeBonuses.doublePoints ? POINTS_CORRECT * 2 : POINTS_CORRECT;
-      gs.scores[player.id] = (gs.scores[player.id] ?? 0) + pts;
+      gs.scores[playerId] = (gs.scores[playerId] ?? 0) + pts;
+    }
+  } else {
+    for (const player of players) {
+      const ans = gs.answers[player.id];
+      if (ans && ans.answerIndex === q.correctIndex) {
+        const activeBonuses = gs.activeBonuses[player.id] || {};
+        const pts = activeBonuses.doublePoints ? POINTS_CORRECT * 2 : POINTS_CORRECT;
+        gs.scores[player.id] = (gs.scores[player.id] ?? 0) + pts;
+      }
     }
   }
 
   const roundResult = {
-    correctIndex: q.correctIndex,
+    correctIndex: q.type === 'numeric' ? q.correctValue : q.correctIndex,
     answers: Object.fromEntries(
       Object.entries(gs.answers).map(([id, a]) => [id, a.answerIndex])
     ),
@@ -261,7 +291,7 @@ io.on('connection', (socket) => {
         currentIndex: 0,
         answers: {},
         scores: Object.fromEntries(lobby.players.map((p) => [p.id, 0])),
-        bonuses: Object.fromEntries(lobby.players.map((p) => [p.id, { fiftyFifty: 3, doublePoints: 3 }])),
+        bonuses: Object.fromEntries(lobby.players.map((p) => [p.id, { fiftyFifty: 3, doublePoints: 3, targeting: 3 }])),
         activeBonuses: {},
         usedBonuses: {},
         questionStartedAt: 0,
@@ -382,15 +412,36 @@ io.on('connection', (socket) => {
       gs.usedBonuses[socket.id].fiftyFifty = true;
       socket.emit('fiftyFiftyResult', { disabledIndices: toDisable });
     } else if (type === 'doublePoints') {
-      if (playerBonuses.doublePoints <= 0) return;
-      if (!gs.activeBonuses[socket.id]) gs.activeBonuses[socket.id] = {};
-      if (gs.activeBonuses[socket.id].doublePoints) return; // already active
+        if (playerBonuses.doublePoints <= 0) return;
+        if (!gs.activeBonuses[socket.id]) gs.activeBonuses[socket.id] = {};
+        if (gs.activeBonuses[socket.id].doublePoints) return; // already active
 
-      playerBonuses.doublePoints--;
-      gs.activeBonuses[socket.id].doublePoints = true;
-      gs.usedBonuses[socket.id].doublePoints = true;
-      socket.emit('doublePointsResult', { active: true });
-    }
+        playerBonuses.doublePoints--;
+        gs.activeBonuses[socket.id].doublePoints = true;
+        gs.usedBonuses[socket.id].doublePoints = true;
+        socket.emit('doublePointsResult', { active: true });
+      } else if (type === 'targeting') {
+          // Targeting (mirino) bonus, only for numeric questions and usable once per question
+          if (playerBonuses.targeting <= 0) return;
+          // Prevent reuse within the same question
+          if (gs.activeBonuses[socket.id] && gs.activeBonuses[socket.id].targeting) return; // already active
+          const q = gs.questions[gs.currentIndex];
+          if (q.type !== 'numeric') return;
+          // Compute reduced range (e.g., 20% of original range centered around correct value)
+          const originalMin = q.min ?? 0;
+          const originalMax = q.max ?? 100;
+          const range = originalMax - originalMin;
+          const reducedRange = Math.max(1, Math.floor(range * 0.2));
+          const correct = q.correctValue;
+          const newMin = Math.max(originalMin, correct - Math.floor(reducedRange / 2));
+          const newMax = Math.min(originalMax, correct + Math.ceil(reducedRange / 2));
+          // Store active targeting range for this player
+          if (!gs.activeBonuses[socket.id]) gs.activeBonuses[socket.id] = {};
+          gs.activeBonuses[socket.id].targeting = { min: newMin, max: newMax };
+          playerBonuses.targeting--;
+          gs.usedBonuses[socket.id].targeting = true;
+          socket.emit('targetingResult', { min: newMin, max: newMax });
+        }
   });
 
   // 7. Leave Lobby

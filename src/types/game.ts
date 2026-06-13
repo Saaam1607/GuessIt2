@@ -33,8 +33,12 @@ export interface QuestionPayload {
   options: string[];
   category: string;
   image: string;
-  type: 'multiple_choice' | 'true_false';
+  type: 'multiple_choice' | 'true_false' | 'numeric';
   explaination: string[];
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
 }
 
 export interface RoundResult {

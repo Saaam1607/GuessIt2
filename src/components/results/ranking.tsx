@@ -14,9 +14,9 @@ interface RankingProps {
   };
   answers?: Record<string, number | null>;
   correctIndex?: number;
-  questionType?: 'multiple_choice' | 'true_false';
+  questionType?: 'multiple_choice' | 'true_false' | 'numeric';
   serverUrl?: string;
-  usedBonuses?: Record<string, { fiftyFifty?: boolean; doublePoints?: boolean }>;
+  usedBonuses?: Record<string, { fiftyFifty?: boolean; doublePoints?: boolean; targeting?: boolean }>;
 }
 
 export default function Ranking({
@@ -43,14 +43,44 @@ export default function Ranking({
         CLASSIFICA
       </Text>
 
-      {players
-        .slice()
-        .sort((a, b) => b.score - a.score)
-        .map((player, index) => {
-          const playerAnswer = answers?.[player.id];
-          const answerLabel = playerAnswer != null ? labels[playerAnswer] : undefined;
-          const isCorrect = playerAnswer === correctIndex;
-          const noAnswer = playerAnswer == null;
+      {(() => {
+        let closestPlayers: string[] = [];
+        if (questionType === 'numeric' && correctIndex != null) {
+          let closestDiff = Infinity;
+          for (const pid of Object.keys(answers || {})) {
+            const a = answers?.[pid];
+            if (a !== null && a !== undefined) {
+              const diff = Math.abs(a - correctIndex);
+              if (diff < closestDiff) {
+                closestDiff = diff;
+                closestPlayers = [pid];
+              } else if (diff === closestDiff) {
+                closestPlayers.push(pid);
+              }
+            }
+          }
+        }
+
+        return players
+          .slice()
+          .sort((a, b) => b.score - a.score)
+          .map((player, index) => {
+            const playerAnswer = answers?.[player.id];
+            let answerLabel = undefined;
+            if (playerAnswer != null) {
+              if (questionType === 'numeric') {
+                answerLabel = String(playerAnswer);
+              } else {
+                answerLabel = labels[playerAnswer];
+              }
+            }
+            let isCorrect = false;
+            if (questionType === 'numeric') {
+              isCorrect = closestPlayers.includes(player.id);
+            } else {
+              isCorrect = playerAnswer === correctIndex;
+            }
+            const noAnswer = playerAnswer == null;
 
           return (
             <ScoreRow
@@ -65,7 +95,8 @@ export default function Ranking({
               usedBonuses={usedBonuses?.[player.id]}
             />
           );
-        })}
+        });
+      })()}
     </>
   );
 }

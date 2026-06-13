@@ -14,7 +14,7 @@ interface ScoreRowProps {
   isCorrect?: boolean;
   noAnswer?: boolean;
   serverUrl?: string;
-  usedBonuses?: { fiftyFifty?: boolean; doublePoints?: boolean };
+  usedBonuses?: { fiftyFifty?: boolean; doublePoints?: boolean; targeting?: boolean };
 }
 
 export function ScoreRow({ player, rank, myId, answerLabel, isCorrect, noAnswer, serverUrl, usedBonuses }: ScoreRowProps) {
@@ -43,13 +43,18 @@ export function ScoreRow({ player, rank, myId, answerLabel, isCorrect, noAnswer,
       </Text>
       <View style={{ flexDirection: 'row', gap: 4, marginRight: 8 }}>
         {usedBonuses?.fiftyFifty && (
-          <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: 'rgba(138,43,226,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
             <Text style={{ color: '#6366f1', fontSize: 10, fontWeight: '900' }}>½</Text>
           </View>
         )}
         {usedBonuses?.doublePoints && (
-          <View style={{ backgroundColor: 'rgba(99,102,241,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
+                    <View style={{ backgroundColor: 'rgba(138,43,226,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
             <Text style={{ color: '#6366f1', fontSize: 10, fontWeight: '900' }}>x2</Text>
+          </View>
+        )}
+        {usedBonuses?.targeting && (
+                    <View style={{ backgroundColor: 'rgba(138,43,226,0.15)', paddingHorizontal: 6, borderRadius: 14, width: 28, height: 28, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: '#6366f1', fontSize: 10, fontWeight: '900' }}>🎯</Text>
           </View>
         )}
       </View>

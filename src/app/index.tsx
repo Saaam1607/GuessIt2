@@ -1,3 +1,4 @@
+import Slider from '@react-native-community/slider';
 import Constants from 'expo-constants';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -18,8 +19,7 @@ import Animated, {
   FadeInDown,
   FadeInUp,
   FadeOut,
-  Layout,
-  ZoomIn,
+  Layout
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import io from 'socket.io-client';
@@ -29,8 +29,8 @@ import { OptionButton } from '@/components/option-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { StyledButton, StyledInput } from '@/components/ui-components';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { OPTION_LABELS, TRUE_FALSE_LABELS } from '@/constants/game';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import type { GameEndPayload, LobbyPlayer, QuestionPayload, RoundResult } from '@/types/game';
 
@@ -80,9 +80,14 @@ export default function App() {
   const [showInfo, setShowInfo] = useState(false);
 
   // ── Bonuses state ────────────────────────────────────────────────────────────
-  const [myBonuses, setMyBonuses] = useState({ fiftyFifty: 3, doublePoints: 3 });
+  const [myBonuses, setMyBonuses] = useState({ fiftyFifty: 3, doublePoints: 3, targeting: 3 });
+
   const [doublePointsActive, setDoublePointsActive] = useState(false);
+  const [fiftyFiftyActive, setFiftyFiftyActive] = useState(false);
+  const [targetingActive, setTargetingActive] = useState(false);
+
   const [disabledIndices, setDisabledIndices] = useState<number[]>([]);
+  const [targetRange, setTargetRange] = useState<{ min: number, max: number } | null>(null);
 
   // ── Socket ───────────────────────────────────────────────────────────────────
   const socketRef = useRef<any>(null);
@@ -165,8 +170,10 @@ export default function App() {
       setReadyCount(null);
       setCountdown(null);
       setHasPressedReady(false);
-      setMyBonuses({ fiftyFifty: 3, doublePoints: 3 });
+      setMyBonuses({ fiftyFifty: 3, doublePoints: 3, targeting: 3 });
       setDoublePointsActive(false);
+      setTargetingActive(false);
+      setTargetRange(null);
       setDisabledIndices([]);
     });
 
@@ -174,13 +181,15 @@ export default function App() {
       console.log('[Socket] newQuestion received:', payload.index + 1, '/', payload.total);
       if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
       setCurrentQuestion(payload);
-      setSelectedIndex(null);
+      setSelectedIndex(payload.type === 'numeric' ? (payload.min ?? 0) : null);
       setAnswerSubmitted(false);
       setRoundResult(null);
       setReadyCount(null);
       setCountdown(null);
       setHasPressedReady(false);
       setDoublePointsActive(false);
+      setTargetingActive(false);
+      setTargetRange(null);
       setDisabledIndices([]);
       setScreen('GAME_CATEGORY_REVEAL');
       revealTimerRef.current = setTimeout(() => {
@@ -200,6 +209,9 @@ export default function App() {
       if (me && me.bonuses) {
         setMyBonuses(me.bonuses);
       }
+      // Reset targeting range for next round
+      setTargetRange(null);
+      setDoublePointsActive(false);
     });
 
     socket.on('readyCount', (data: { ready: number; total: number }) => {
@@ -213,6 +225,7 @@ export default function App() {
     });
 
     socket.on('fiftyFiftyResult', (data: { disabledIndices: number[] }) => {
+      setFiftyFiftyActive(true);
       setDisabledIndices(data.disabledIndices);
       setMyBonuses(prev => ({ ...prev, fiftyFifty: Math.max(0, prev.fiftyFifty - 1) }));
     });
@@ -222,6 +235,17 @@ export default function App() {
         setDoublePointsActive(true);
         setMyBonuses(prev => ({ ...prev, doublePoints: Math.max(0, prev.doublePoints - 1) }));
       }
+    });
+
+    socket.on('targetingResult', (data: { min: number; max: number }) => {
+      setTargetingActive(true);
+      setTargetRange({ min: data.min, max: data.max });
+      const step = currentQuestion?.step ?? 1;
+      const base = selectedIndex ?? data.min;
+      const rounded = Math.round(base / step) * step;
+      const clamped = Math.min(Math.max(rounded, data.min), data.max);
+      setSelectedIndex(clamped);
+      setMyBonuses(prev => ({ ...prev, targeting: Math.max(0, prev.targeting - 1) }));
     });
 
     return () => {
@@ -405,8 +429,8 @@ export default function App() {
                   {serverUrl ? (
                     <View style={{ marginBottom: Spacing.four, alignItems: 'center' }}>
                       <ThemedText type="smallBold" style={{ marginBottom: Spacing.two }}>Scegli il tuo Avatar</ThemedText>
-                      <Pressable 
-                        onPress={() => setShowAvatarModal(true)} 
+                      <Pressable
+                        onPress={() => setShowAvatarModal(true)}
                         style={{
                           borderWidth: 2,
                           borderColor: '#4f46e5',
@@ -414,9 +438,9 @@ export default function App() {
                           padding: 2
                         }}
                       >
-                        <Image 
-                          source={{ uri: `${serverUrl}/images/profiles/${profileImage}` }} 
-                          style={{ width: 144, height: 144, borderRadius: 72, backgroundColor: 'rgba(0,0,0,0.05)' }} 
+                        <Image
+                          source={{ uri: `${serverUrl}/images/profiles/${profileImage}` }}
+                          style={{ width: 144, height: 144, borderRadius: 72, backgroundColor: 'rgba(0,0,0,0.05)' }}
                         />
                         <View style={{
                           position: 'absolute',
@@ -524,9 +548,9 @@ export default function App() {
                         ]}
                       >
                         <View style={styles.playerInfo}>
-                          <Image 
-                            source={{ uri: `${serverUrl}/images/profiles/${player.profileImage || 'panda.png'}` }} 
-                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.1)' }} 
+                          <Image
+                            source={{ uri: `${serverUrl}/images/profiles/${player.profileImage || 'panda.png'}` }}
+                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.1)' }}
                           />
                           <ThemedText type="default" style={styles.playerName}>{player.name}</ThemedText>
                           {player.isHost && (
@@ -600,31 +624,30 @@ export default function App() {
                     {currentQuestion.index + 1} / {currentQuestion.total}
                   </Text>
                 </View>
-                
+
                 <QuestionImage imageName={currentQuestion.image} />
 
                 <Text style={[gs.questionText, { color: theme.text }]}>{currentQuestion.question}</Text>
 
                 <View style={{ flexDirection: 'row', gap: Spacing.six, justifyContent: 'center', marginBottom: Spacing.four }}>
-                  {currentQuestion.type === 'multiple_choice' && (
-                    <Pressable 
-                      onPress={() => socketRef.current?.emit('useBonus', { type: 'fiftyFifty' })} 
-                      disabled={answerSubmitted || myBonuses.fiftyFifty <= 0 || disabledIndices.length > 0} 
-                      style={{ alignItems: 'center', opacity: (answerSubmitted || myBonuses.fiftyFifty <= 0 || disabledIndices.length > 0) ? 0.5 : 1 }}
-                    >
-                      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(99,102,241,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#6366f1' }}>
-                        <Text style={{ fontSize: 16, fontWeight: '900', color: '#6366f1' }}>½</Text>
-                      </View>
-                      <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
-                        {[...Array(3)].map((_, i) => (
-                          <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i < myBonuses.fiftyFifty ? '#6366f1' : 'rgba(99,102,241,0.2)' }} />
-                        ))}
-                      </View>
-                    </Pressable>
-                  )}
-                  <Pressable 
-                    onPress={() => socketRef.current?.emit('useBonus', { type: 'doublePoints' })} 
-                    disabled={answerSubmitted || myBonuses.doublePoints <= 0 || doublePointsActive} 
+
+                  <Pressable
+                    onPress={() => socketRef.current?.emit('useBonus', { type: 'fiftyFifty' })}
+                    disabled={answerSubmitted || myBonuses.fiftyFifty <= 0 || disabledIndices.length > 0 || currentQuestion.type !== 'multiple_choice' || fiftyFiftyActive}
+                    style={{ alignItems: 'center', opacity: (answerSubmitted || myBonuses.fiftyFifty <= 0 || disabledIndices.length > 0 || currentQuestion.type !== 'multiple_choice' || fiftyFiftyActive) ? 0.5 : 1 }}
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: fiftyFiftyActive ? '#6366f1' : 'rgba(99,102,241,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#6366f1' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: fiftyFiftyActive ? '#fff' : '#6366f1' }}>½</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
+                      {[...Array(3)].map((_, i) => (
+                        <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i < myBonuses.fiftyFifty ? '#6366f1' : 'rgba(99,102,241,0.2)' }} />
+                      ))}
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => socketRef.current?.emit('useBonus', { type: 'doublePoints' })}
+                    disabled={answerSubmitted || myBonuses.doublePoints <= 0 || doublePointsActive}
                     style={{ alignItems: 'center', opacity: (answerSubmitted || myBonuses.doublePoints <= 0 || doublePointsActive) ? 0.5 : 1 }}
                   >
                     <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: doublePointsActive ? '#6366f1' : 'rgba(99,102,241,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#6366f1' }}>
@@ -636,12 +659,66 @@ export default function App() {
                       ))}
                     </View>
                   </Pressable>
+                  <Pressable
+                    onPress={() => socketRef.current?.emit('useBonus', { type: 'targeting' })}
+                    disabled={answerSubmitted || myBonuses.targeting <= 0 || !currentQuestion || currentQuestion.type !== 'numeric' || targetingActive}
+                    style={{ alignItems: 'center', opacity: (answerSubmitted || myBonuses.targeting <= 0 || !currentQuestion || currentQuestion.type !== 'numeric' || targetingActive) ? 0.5 : 1 }}
+                  >
+                    <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: targetingActive ? '#6366f1' : 'rgba(99,102,241,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#6366f1' }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: '#6366f1' }}>🎯</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 4, marginTop: 6 }}>
+                      {[...Array(3)].map((_, i) => (
+                        <View key={i} style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i < myBonuses.targeting ? '#6366f1' : 'rgba(99,102,241,0.2)' }} />
+                      ))}
+                    </View>
+                  </Pressable>
                 </View>
 
+
                 <View style={gs.optionsContainer}>
-                  {currentQuestion.options.map((opt, idx) => {
-                    const labels = getOptionLabels(currentQuestion.type);
-                    return <OptionButton
+                  {currentQuestion.type === 'numeric' ? (
+                    <View style={{ alignItems: 'center', padding: Spacing.four, backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: Spacing.three }}>
+                      <Text style={{ fontSize: 32, fontWeight: '800', color: '#4f46e5', marginBottom: Spacing.four }}>
+                        {selectedIndex !== null ? selectedIndex : (currentQuestion.min ?? 0)} {currentQuestion.unit}
+                      </Text>
+                      <Slider
+                        style={{ width: '100%', height: 40 }}
+                        minimumValue={targetRange ? targetRange.min : (currentQuestion.min ?? 0)}
+                        maximumValue={targetRange ? targetRange.max : (currentQuestion.max ?? 100)}
+                        step={currentQuestion.step ?? 1}
+                        value={selectedIndex !== null ? selectedIndex : (currentQuestion.min ?? 0)}
+                        onValueChange={(val) => {
+                          if (answerSubmitted) return;
+                          const step = currentQuestion.step ?? 1;
+                          const rounded = Math.round(val / step) * step;
+                          const min = targetRange ? targetRange.min : (currentQuestion.min ?? 0);
+                          const max = targetRange ? targetRange.max : (currentQuestion.max ?? 100);
+                          const clamped = Math.min(Math.max(rounded, min), max);
+                          setSelectedIndex(clamped);
+                        }}
+                        minimumTrackTintColor="#6366f1"
+                        maximumTrackTintColor="#cbd5e1"
+                        thumbTintColor="#10b981"
+                        disabled={answerSubmitted}
+                      />
+                      {/* Original range (always visible) */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: Spacing.two }}>
+                        <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>{currentQuestion.min}</Text>
+                        <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>{currentQuestion.max}</Text>
+                      </View>
+                      {/* Targeted range (gold) */}
+                      {targetRange && (
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: Spacing.one }}>
+                          <Text style={{ color: '#d4af37', fontWeight: '600' }}>{targetRange.min}</Text>
+                          <Text style={{ color: '#d4af37', fontWeight: '600' }}>{targetRange.max}</Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    currentQuestion.options.map((opt, idx) => {
+                      const labels = getOptionLabels(currentQuestion.type);
+                      return <OptionButton
                         key={idx}
                         label={labels[idx] ?? ''}
                         text={opt}
@@ -653,7 +730,8 @@ export default function App() {
                         questionType={currentQuestion.type}
                         isEliminated={disabledIndices.includes(idx)}
                       />;
-                  })}
+                    })
+                  )}
                 </View>
 
                 {answerSubmitted ? (
@@ -673,7 +751,7 @@ export default function App() {
             {/* ── GAME: ROUND RESULT ── */}
             {screen === 'GAME_ROUND_RESULT' && currentQuestion && roundResult && (
               <Animated.View entering={FadeInDown.duration(400)} exiting={FadeOut.duration(200)}>
-                
+
                 <View style={gs.roundResultHeader}>
                   <Text style={[gs.heading, { color: theme.text, textAlign: 'center' }]}>
                     Risultato Round
@@ -688,9 +766,82 @@ export default function App() {
                 <QuestionImage imageName={currentQuestion.image} />
 
                 <View style={gs.optionsContainer}>
-                  {currentQuestion.options.map((opt, idx) => {
-                    const labels = getOptionLabels(currentQuestion.type);
-                    return <OptionButton
+                  {currentQuestion.type === 'numeric' ? (
+                    <View style={{ alignItems: 'center', padding: Spacing.four, backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: Spacing.three }}>
+                      <Text style={{ fontSize: 24, fontWeight: '600', color: theme.textSecondary, marginBottom: Spacing.one }}>
+                        La risposta corretta è:
+                      </Text>
+                      <Text style={{ fontSize: 40, fontWeight: '900', color: '#10b981', marginBottom: Spacing.four }}>
+                        {roundResult.correctIndex} {currentQuestion.unit}
+                      </Text>
+
+                      <View style={{ width: '100%', height: 8, backgroundColor: '#cbd5e1', borderRadius: 4, marginVertical: Spacing.four }}>
+                        {/* Indicatore della risposta corretta */}
+                        <View style={{
+                          position: 'absolute',
+                          left: `${((roundResult.correctIndex - (currentQuestion.min ?? 0)) / ((currentQuestion.max ?? 100) - (currentQuestion.min ?? 0))) * 100}%`,
+                          width: 16,
+                          height: 24,
+                          backgroundColor: '#10b981',
+                          borderRadius: 8,
+                          top: -8,
+                          transform: [{ translateX: -8 }],
+                          zIndex: 2,
+                          borderWidth: 2,
+                          borderColor: '#fff'
+                        }} />
+
+                        {/* Indicatori delle risposte dei giocatori */}
+                        {(() => {
+                          let closestPlayers: string[] = [];
+                          let closestDiff = Infinity;
+                          for (const pid of Object.keys(roundResult.answers || {})) {
+                            const a = roundResult.answers[pid];
+                            if (a !== null && a !== undefined) {
+                              const diff = Math.abs(a - roundResult.correctIndex);
+                              if (diff < closestDiff) {
+                                closestDiff = diff;
+                                closestPlayers = [pid];
+                              } else if (diff === closestDiff) {
+                                closestPlayers.push(pid);
+                              }
+                            }
+                          }
+
+                          return roundResult.players.map((p) => {
+                            const ans = roundResult.answers[p.id];
+                            if (ans === null || ans === undefined) return null;
+                            const isMe = p.id === myId;
+                            const isClosest = closestPlayers.includes(p.id);
+
+                            const color = isClosest ? '#10b981' : (isMe ? '#4f46e5' : '#94a3b8');
+
+                            return (
+                              <View key={p.id} style={{
+                                position: 'absolute',
+                                left: `${((ans - (currentQuestion.min ?? 0)) / ((currentQuestion.max ?? 100) - (currentQuestion.min ?? 0))) * 100}%`,
+                                width: 12,
+                                height: 12,
+                                backgroundColor: color,
+                                borderRadius: 6,
+                                top: -2,
+                                transform: [{ translateX: -6 }],
+                                zIndex: isClosest ? 2 : (isMe ? 1 : 0),
+                              }} />
+                            );
+                          });
+                        })()}
+                      </View>
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                        <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>{currentQuestion.min}</Text>
+                        <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>{currentQuestion.max}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    currentQuestion.options.map((opt, idx) => {
+                      const labels = getOptionLabels(currentQuestion.type);
+                      return <OptionButton
                         key={idx}
                         label={labels[idx] ?? ''}
                         text={opt}
@@ -701,7 +852,8 @@ export default function App() {
                         disabled={true}
                         questionType={currentQuestion.type}
                       />;
-                  })}
+                    })
+                  )}
                 </View>
 
                 <Ranking
@@ -759,7 +911,7 @@ export default function App() {
 
       <Modal visible={showInfo} transparent animationType="fade" onRequestClose={() => setShowInfo(false)}>
         <Pressable style={gs.modalOverlay} onPress={() => setShowInfo(false)}>
-          <Pressable style={[gs.modalContent, { backgroundColor: theme.background }]} onPress={() => {}}>
+          <Pressable style={[gs.modalContent, { backgroundColor: theme.background }]} onPress={() => { }}>
             <Text style={[gs.modalTitle, { color: theme.text }]}>Spiegazione</Text>
             <ScrollView style={gs.modalScroll}>
               {currentQuestion?.explaination?.map((line, i) => (
@@ -774,16 +926,16 @@ export default function App() {
       </Modal>
       <Modal visible={showAvatarModal} transparent animationType="fade" onRequestClose={() => setShowAvatarModal(false)}>
         <Pressable style={gs.modalOverlay} onPress={() => setShowAvatarModal(false)}>
-          <Pressable style={[gs.modalContent, { backgroundColor: theme.background, alignItems: 'center' }]} onPress={() => {}}>
+          <Pressable style={[gs.modalContent, { backgroundColor: theme.background, alignItems: 'center' }]} onPress={() => { }}>
             <Text style={[gs.modalTitle, { color: theme.text }]}>Seleziona Avatar</Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: Spacing.three, marginVertical: Spacing.four }}>
               {PROFILE_IMAGES.map((img) => (
-                <Pressable 
-                  key={img} 
+                <Pressable
+                  key={img}
                   onPress={() => {
                     setProfileImage(img);
                     setShowAvatarModal(false);
-                  }} 
+                  }}
                   style={{
                     borderWidth: 3,
                     borderColor: profileImage === img ? '#4f46e5' : 'transparent',
@@ -791,9 +943,9 @@ export default function App() {
                     padding: 2
                   }}
                 >
-                  <Image 
-                    source={{ uri: `${serverUrl}/images/profiles/${img}` }} 
-                    style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: 'rgba(0,0,0,0.05)' }} 
+                  <Image
+                    source={{ uri: `${serverUrl}/images/profiles/${img}` }}
+                    style={{ width: 128, height: 128, borderRadius: 64, backgroundColor: 'rgba(0,0,0,0.05)' }}
                   />
                 </Pressable>
               ))}
